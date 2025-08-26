@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نقشه جذاب بافت فرسوده کازرون</title>
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <!-- Tailwind CSS for modern styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Full-screen map container */
+        #map {
+            width: 100vw;
+            height: 100vh;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Custom styling for leaflet controls */
+        .leaflet-control-layers-base, .leaflet-control-layers-overlays {
+            color: #1e40af !important;
+        }
+
+        .leaflet-control-layers-base label, .leaflet-control-layers-overlays label {
+            display: flex;
+            align-items: center;
+            font-size: 1rem;
+            font-weight: 500;
+        }
+
+        /* Styling for the legend */
+        .info.legend {
+            background-color: white;
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            direction: rtl; /* Set direction for legend */
+        }
+
+        .info.legend h4 {
+            font-weight: bold;
+            font-size: 1rem;
+            margin-bottom: 5px;
+            text-align: right;
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 5px;
+        }
+
+        .info.legend i {
+            width: 18px;
+            height: 18px;
+            float: right;
+            margin-right: 8px;
+            opacity: 0.7;
+            border-radius: 3px;
+        }
+
+        .info.legend span {
+            display: inline-block;
+            text-align: right;
+            padding-right: 5px;
+        }
+        
+        /* Styling for a clear separation between legends */
+        .legend-divider {
+            height: 1px;
+            background-color: #ccc;
+            margin: 10px 0;
+        }
+
+        /* Styling for the popups */
+        .leaflet-popup-content-wrapper {
+            border-radius: 12px;
+        }
+
+        /* Styling for the neighborhood labels */
+        .neighborhood-label {
+            color: #333;
+            font-weight: bold;
+            font-size: 1rem;
+            text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.8);
+            opacity: 0.6;
+            text-align: center;
+        }
+    </style>
+</head>
+<body class="font-sans antialiased text-gray-800 bg-gray-50">
+
+<div id="map" class="shadow-2xl rounded-2xl"></div>
+
+<!-- Leaflet JavaScript -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+    // Initialize the map
+    const map = L.map('map').setView([29.62, 51.68], 13);
+    let pointsLayer = null;
+    let labelsLayer = L.layerGroup().addTo(map);
+
+    // Add base tile layer (OpenStreetMap)
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    }).addTo(map);
+
+    // Color palettes for neighborhoods and years
+    const mahalatColors = {
+        'محله_۱': '#e6194B',
+        'محله_۲': '#3cb44b',
+        'محله_۳': '#ffe119',
+        'محله_۴': '#4363d8',
+        'محله_۵': '#f58231',
+        'محله_۶': '#911eb4',
+        'محله_۷': '#42d4f4',
+        'محله_۸': '#f032e6',
+        'محله_۹': '#bfef45',
+        'محله_۱۰': '#fabed4',
+        'محله_۱۱': '#469990',
+        'محله_۱۲': '#dcbeff',
+        'محله_۱۳': '#9A6324',
+        'default': '#808080'
+    };
+
+    const yearColors = {
+        '1399': '#ff0000', // قرمز
+        '1400': '#ff7b00', // نارنجی
+        '1401': '#ffec00', // زرد
+        '1402': '#00ff00', // سبز
+        '1403': '#0000ff', // آبی
+        'default': '#808080' // خاکستری
+    };
+
+    // Helper function to get color based on neighborhood name
+    function getMahalatColor(mahalat) {
+        return mahalatColors[mahalat] || mahalatColors['default'];
+    }
+
+    // Helper function to get color based on year
+    function getYearColor(year) {
+        return yearColors[year] || yearColors['default'];
+    }
+    
+    // A mapping from neighborhood names to colors for dynamic styling
+    const nameToColor = {};
+
+    // Load and display GeoJSON data
+    async function loadGeoJSON(url, name, options) {
+        try {
+            const response = await fetch(url);
+            if (!response.ok) {
+                // Throw a custom error with the HTTP status
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+            const layer = L.geoJSON(data, options);
+            if (options.addToMap) {
+                layer.addTo(map);
+            }
+            if (options.fitBounds) {
+                 map.fitBounds(layer.getBounds());
+            }
+            return {layer, data};
+        } catch (error) {
+            console.error(`Error loading GeoJSON from ${url}:`, error);
+            // Show a more informative alert
+            alert(`خطا در بارگذاری ${name}. لطفاً مطمئن شوید که آدرس فایل صحیح است و فایل در دسترس عموم قرار دارد. خطای دریافتی: ${error.message}`);
+            return null;
+        }
+    }
+
+    // Create a dynamic marker icon based on zoom level
+    function createDynamicMarkerIcon(feature) {
+        const zoom = map.getZoom();
+        let iconSize = 24;
+        if (zoom < 10) {
+            iconSize = 16;
+        } else if (zoom >= 10 && zoom < 14) {
+            iconSize = 24;
+        } else {
+            iconSize = 32;
+        }
+        
+        // Get color based on the 'year' property
+        const yearColor = getYearColor(feature.properties.year);
+        
+        return L.divIcon({
+            className: 'my-custom-icon',
+            html: `<svg class="w-full h-full" fill="${yearColor}" viewBox="0 0 24 24">
+                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"></path>
+                    </svg>`,
+            iconSize: [iconSize, iconSize],
+            iconAnchor: [iconSize / 2, iconSize],
+            popupAnchor: [0, -iconSize]
+        });
+    }
+
+    // Update the size of markers on zoom change
+    function updateMarkerSize() {
+        if (pointsLayer) {
+            pointsLayer.eachLayer(function (layer) {
+                const newIcon = createDynamicMarkerIcon(layer.feature);
+                layer.setIcon(newIcon);
+            });
+        }
+    }
+
+    // Create and add neighborhood labels
+    function addNeighborhoodLabels(geojson) {
+        labelsLayer.clearLayers();
+        L.geoJSON(geojson, {
+            onEachFeature: function(feature, layer) {
+                if (feature.properties && feature.properties.name) {
+                    const center = layer.getBounds().getCenter();
+                    const label = L.marker(center, {
+                        icon: L.divIcon({
+                            className: 'neighborhood-label',
+                            html: feature.properties.name,
+                            iconSize: [100, 20],
+                            iconAnchor: [50, 10]
+                        })
+                    });
+                    labelsLayer.addLayer(label);
+                }
+            }
+        });
+    }
+
+    // Load GeoJSON files on page load
+    document.addEventListener('DOMContentLoaded', async () => {
+        // NOTE: These URLs are placeholders. You must replace them with the correct public URLs for your GeoJSON files.
+        // A 404 error indicates the file was not found at the given address.
+        const mahalatGeoJSONUrl = 'mahalatfarsodeh.geojson';
+        const nosaziGeoJSONUrl = 'nosazi.geojson';
+
+        // Load and style polygons (neighborhoods)
+        const polygonsResponse = await loadGeoJSON(mahalatGeoJSONUrl, 'محلات', {
+            style: function(feature) {
+                // Check if the name exists and assign a random color
+                if (feature.properties && feature.properties.name && !nameToColor[feature.properties.name]) {
+                    nameToColor[feature.properties.name] = '#' + Math.floor(Math.random()*16777215).toString(16);
+                }
+                return {
+                    fillColor: nameToColor[feature.properties.name] || '#808080',
+                    weight: 2,
+                    opacity: 1,
+                    color: 'white',
+                    dashArray: '3',
+                    fillOpacity: 0.5
+                };
+            },
+            onEachFeature: function(feature, layer) {
+                if (feature.properties && feature.properties.name) {
+                    layer.bindPopup(`<strong>نام محله:</strong> ${feature.properties.name}`);
+                }
+            },
+            fitBounds: true,
+            addToMap: true // Ensure layer is added to map
+        });
+        const polygonsLayer = polygonsResponse ? polygonsResponse.layer : null;
+        const polygonsData = polygonsResponse ? polygonsResponse.data : null;
+
+
+        // Load and style points
+        const pointsResponse = await loadGeoJSON(nosaziGeoJSONUrl, 'قطعات نوسازی شده', {
+            pointToLayer: function(feature, latlng) {
+                return L.marker(latlng, { icon: createDynamicMarkerIcon(feature) });
+            },
+            onEachFeature: function(feature, layer) {
+                if (feature.properties) {
+                    let popupContent = `
+                        <div class="p-2 bg-white rounded-lg shadow-md">
+                            <h4 class="text-lg font-bold text-blue-800">اطلاعات ملک</h4>
+                            <ul class="mt-2 text-sm text-gray-700 space-y-1">
+                                <li class="flex justify-between items-center"><span class="font-medium">سال نوسازی:</span> <span class="text-right">${feature.properties.year || 'نامشخص'}</span></li>
+                                <li class="flex justify-between items-center"><span class="font-medium">کاربری ملک:</span> <span class="text-right">${feature.properties.توصیح || 'نامشخص'}</span></li>
+                                <li class="flex justify-between items-center"><span class="font-medium">طبقه:</span> <span class="text-right">${feature.properties['تعدا-۱'] || 'نامشخص'}</span></li>
+                                <li class="flex justify-between items-center"><span class="font-medium">تعداد واحد:</span> <span class="text-right">${feature.properties.تعداد || 'نامشخص'}</span></li>
+                            </ul>
+                        </div>`;
+                    layer.bindPopup(popupContent);
+                }
+            },
+            fitBounds: false,
+            addToMap: true // Ensure layer is added to map
+        });
+        pointsLayer = pointsResponse ? pointsResponse.layer : null;
+
+        // Add layer control
+        if (pointsLayer || polygonsLayer) {
+            const overlayMaps = {};
+            if (polygonsLayer) {
+                overlayMaps["محلات"] = polygonsLayer;
+            }
+            if (pointsLayer) {
+                overlayMaps["قطعات نوسازی شده"] = pointsLayer;
+            }
+            L.control.layers(null, overlayMaps).addTo(map);
+        }
+
+        // Add a combined legend for both neighborhoods and years
+        if (pointsLayer || polygonsLayer) {
+            const legend = L.control({position: 'bottomleft'});
+            legend.onAdd = function (map) {
+                const div = L.DomUtil.create('div', 'info legend');
+
+                // Legend for Neighborhoods
+                if (polygonsData) {
+                    div.innerHTML += '<h4>راهنمای نام محلات</h4>';
+                    const uniqueNames = [...new Set(polygonsData.features.map(f => f.properties.name))];
+                    uniqueNames.forEach(name => {
+                        div.innerHTML += `<i style="background:${nameToColor[name]}"></i><span>${name}</span><br>`;
+                    });
+                }
+                
+                // Add a divider if both legends exist
+                if (polygonsData && pointsLayer) {
+                    div.innerHTML += '<div class="legend-divider"></div>';
+                }
+
+                // Legend for Years
+                if (pointsLayer && pointsResponse.data && pointsResponse.data.features) {
+                     div.innerHTML += '<h4>راهنمای سال نوسازی</h4>';
+                    const uniqueYears = [...new Set(pointsResponse.data.features.map(f => f.properties.year))].sort();
+                    uniqueYears.forEach(year => {
+                        if (year) {
+                            const color = getYearColor(String(year));
+                            div.innerHTML += `<i style="background:${color}"></i><span>سال ${year}</span><br>`;
+                        }
+                    });
+                }
+                
+                return div;
+            };
+            legend.addTo(map);
+        }
+
+        // Add event listener to update marker size and labels on zoom change
+        map.on('zoomend', function() {
+            updateMarkerSize();
+            if (polygonsData) {
+                addNeighborhoodLabels(polygonsData);
+            }
+        });
+
+        // Add initial labels if data is available
+        if (polygonsData) {
+            addNeighborhoodLabels(polygonsData);
+        }
+    });
+</script>
+</body>
+</html>
